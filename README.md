@@ -35,4 +35,7 @@ $ 17vpn
 
 # Disconnect all connections
 $ 17vpn d
+
+# Connect directly by ID or Server
+$ 17vpn 2
 ```

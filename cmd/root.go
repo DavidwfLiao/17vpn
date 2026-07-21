@@ -16,6 +16,7 @@ import (
 var rootCmd = &cobra.Command{
 	Use:   "17vpn",
 	Short: "17vpn tool",
+	Args:  cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := initConfig(); err != nil {
 			color.Red(err.Error())
@@ -26,25 +27,29 @@ var rootCmd = &cobra.Command{
 		profiles := p.Profiles()
 		conns := p.Connections()
 
-		if err := list(profiles, conns); err != nil {
-			color.Yellow(err.Error())
-			return
-		}
-
-		fmt.Println()
-
-		var options []string
-		for _, profile := range profiles {
-			options = append(options, profile.Server)
-		}
 		var id string
-		prompt := &survey.Input{
-			Message:       "Enter ID or Server",
-			Default:       "",
-		}
-		if err := survey.AskOne(prompt, &id); err != nil {
-			color.Red(err.Error())
-			return
+		if len(args) == 1 {
+			id = args[0]
+		} else {
+			if err := list(profiles, conns); err != nil {
+				color.Yellow(err.Error())
+				return
+			}
+
+			fmt.Println()
+
+			var options []string
+			for _, profile := range profiles {
+				options = append(options, profile.Server)
+			}
+			prompt := &survey.Input{
+				Message:       "Enter ID or Server",
+				Default:       "",
+			}
+			if err := survey.AskOne(prompt, &id); err != nil {
+				color.Red(err.Error())
+				return
+			}
 		}
 
 		if id == "" {
