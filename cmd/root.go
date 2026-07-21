@@ -93,6 +93,10 @@ var rootCmd = &cobra.Command{
 
 		timeout := time.NewTimer(30 * time.Second)
 
+		// The daemon registers the connection asynchronously, so an empty
+		// status before any status has been observed means pending, not failed.
+		seen := false
+
 	Loop:
 		for {
 			select {
@@ -106,8 +110,12 @@ var rootCmd = &cobra.Command{
 					color.Green("Connect %s completed!", targetProfile.Server)
 					break Loop
 				case "":
-					color.Red("Connect %s failed!", targetProfile.Server)
-					break Loop
+					if seen {
+						color.Red("Connect %s failed!", targetProfile.Server)
+						break Loop
+					}
+				default:
+					seen = true
 				}
 				time.Sleep(500 * time.Millisecond)
 			}
