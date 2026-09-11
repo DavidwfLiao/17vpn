@@ -77,15 +77,16 @@ var rootCmd = &cobra.Command{
 			return
 		}
 
-		// disconnect all connection
-		for _, profile := range profiles {
-			if _, ok := conns[profile.ID]; ok {
-				color.White("Disconnecting %s...", profile.Server)
-				p.Disconnect(profile.ID)
-				time.Sleep(time.Second)
+		// disconnect all connections before connecting the target
+		if len(conns) > 0 {
+			for _, profile := range profiles {
+				if _, ok := conns[profile.ID]; ok {
+					color.White("Disconnecting %s...", profile.Server)
+				}
 			}
+			p.DisconnectAll()
+			waitDisconnected(p, 5*time.Second)
 		}
-
 
 		// connect target profile
 		color.Yellow("Connecting %s...", targetProfile.Server)
@@ -117,10 +118,29 @@ var rootCmd = &cobra.Command{
 				default:
 					seen = true
 				}
-				time.Sleep(500 * time.Millisecond)
+				time.Sleep(200 * time.Millisecond)
 			}
 		}
 	},
+}
+
+// waitDisconnected polls the daemon until every connection is gone or has
+// status "disconnected", or until timeout passes.
+func waitDisconnected(p *pritunl.Pritunl, timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		active := false
+		for _, conn := range p.Connections() {
+			if conn.Status != "disconnected" {
+				active = true
+				break
+			}
+		}
+		if !active {
+			return
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
 }
 
 func init() {
