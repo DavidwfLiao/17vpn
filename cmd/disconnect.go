@@ -4,7 +4,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
-	"github.com/shawnpeng17/17vpn/internal/pritunl"
+	"github.com/DavidwfLiao/17vpn/internal/pritunl"
 )
 
 var disconnectCmd = &cobra.Command{

@@ -9,21 +9,9 @@ Follow the [confluence](https://17media.atlassian.net/wiki/spaces/H/pages/102724
 
 ### Installation
 
-1. Binary
-
-Download the pre-built binaries from the Releases page. Extract them, move it to your $PATH.
-
-```shell
-curl -OL https://github.com/shawnpeng17/17vpn/releases/download/v1.2.0/17vpn_1.2.0_Darwin_arm_64.tar.gz
-tar -xzvf 17vpn_1.2.0_Darwin_arm_64.tar.gz
-mv 17vpn /usr/local/bin
-17vpn
-```
-
-2. Source
 ```shell
 # install it to your $GOPATH/bin
-go install github.com/shawnpeng17/17vpn@v1.2.0 
+go install github.com/DavidwfLiao/17vpn@v1.3.0
 ```
 
 ### Usage
@@ -38,4 +26,12 @@ $ 17vpn d
 
 # Connect directly by ID or Server
 $ 17vpn 2
+```
+
+Switching servers disconnects the current one first. A spinner shows the
+daemon's status and elapsed time while it works; each step ends with a result line:
+
+```
+✔ Disconnected PREPROD 0.8s
+✔ Connected PROD 7.6s
 ```

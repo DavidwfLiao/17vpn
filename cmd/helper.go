@@ -15,7 +15,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/xlzd/gotp"
 
-	"github.com/shawnpeng17/17vpn/internal/pritunl"
+	"github.com/DavidwfLiao/17vpn/internal/pritunl"
 )
 
 const (
