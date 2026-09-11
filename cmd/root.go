@@ -72,8 +72,9 @@ var rootCmd = &cobra.Command{
 		}
 
 		if isActionDisconnect {
-			p.Disconnect(targetProfile.ID)
-			disconnectWithSpinner(p, targetProfile.Server)
+			disconnectWithSpinner(p, targetProfile.Server, func() {
+				p.Disconnect(targetProfile.ID)
+			})
 			return
 		}
 
@@ -85,8 +86,7 @@ var rootCmd = &cobra.Command{
 					names = append(names, profile.Server)
 				}
 			}
-			p.DisconnectAll()
-			disconnectWithSpinner(p, strings.Join(names, ", "))
+			disconnectWithSpinner(p, strings.Join(names, ", "), p.DisconnectAll)
 		}
 
 		connectWithSpinner(p, targetProfile)
@@ -134,28 +134,55 @@ func connectWithSpinner(p *pritunl.Pritunl, profile pritunl.Profile) {
 	}
 }
 
-// disconnectWithSpinner shows a progress line until every connection is gone
-// or has status "disconnected", giving up after 5 seconds.
-func disconnectWithSpinner(p *pritunl.Pritunl, names string) {
+// disconnectWithSpinner runs stop while showing a progress line. The daemon
+// answers the stop request only after the tunnel is torn down, so the request
+// itself is the wait. Afterwards it polls until no connection is active,
+// giving up after 5 seconds.
+func disconnectWithSpinner(p *pritunl.Pritunl, names string, stop func()) {
 	sp := newSpinner()
-	deadline := time.Now().Add(5 * time.Second)
+	label := "Disconnecting " + names
 
-	for time.Now().Before(deadline) {
-		active := false
-		for _, conn := range p.Connections() {
-			if conn.Status != "disconnected" {
-				active = true
-				break
+	done := make(chan struct{})
+	go func() {
+		stop()
+		close(done)
+	}()
+
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		select {
+		case <-done:
+			deadline = time.Now().Add(5 * time.Second)
+			for time.Now().Before(deadline) {
+				if !anyActive(p) {
+					sp.ok("Disconnected " + names)
+					return
+				}
+				sp.tick(label)
+				time.Sleep(100 * time.Millisecond)
 			}
-		}
-		if !active {
-			sp.ok("Disconnected " + names)
+			sp.fail("Disconnect " + names + " timed out")
 			return
+		default:
+			if time.Now().After(deadline) {
+				sp.fail("Disconnect " + names + " timed out")
+				return
+			}
+			sp.tick(label)
+			time.Sleep(100 * time.Millisecond)
 		}
-		sp.tick("Disconnecting " + names)
-		time.Sleep(100 * time.Millisecond)
 	}
-	sp.fail("Disconnect " + names + " timed out")
+}
+
+// anyActive reports whether the daemon still has a connection that is not
+// disconnected.
+func anyActive(p *pritunl.Pritunl) bool {
+	for _, conn := range p.Connections() {
+		if conn.Status != "disconnected" {
+			return true
+		}
+	}
+	return false
 }
 
 func init() {
