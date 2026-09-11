@@ -90,6 +90,7 @@ var rootCmd = &cobra.Command{
 
 		// connect target profile
 		color.Yellow("Connecting %s...", targetProfile.Server)
+		start := time.Now()
 		p.Connect(targetProfile.ID, password())
 
 		timeout := time.NewTimer(30 * time.Second)
@@ -97,6 +98,7 @@ var rootCmd = &cobra.Command{
 		// The daemon registers the connection asynchronously, so an empty
 		// status before any status has been observed means pending, not failed.
 		seen := false
+		last := ""
 
 	Loop:
 		for {
@@ -106,9 +108,14 @@ var rootCmd = &cobra.Command{
 				break Loop
 			default:
 				status := p.Connections()[targetProfile.ID].Status
+				elapsed := time.Since(start).Seconds()
+				if status != "" && status != "connected" && status != last {
+					color.White("  [%.1fs] %s", elapsed, status)
+				}
+				last = status
 				switch status {
 				case "connected":
-					color.Green("Connect %s completed!", targetProfile.Server)
+					color.Green("Connect %s completed! (%.1fs)", targetProfile.Server, elapsed)
 					break Loop
 				case "":
 					if seen {
