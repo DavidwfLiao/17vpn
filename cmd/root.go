@@ -72,69 +72,74 @@ var rootCmd = &cobra.Command{
 		}
 
 		if isActionDisconnect {
-			color.White("Disconnecting %s...", targetProfile.Server)
 			p.Disconnect(targetProfile.ID)
+			disconnectWithSpinner(p, targetProfile.Server)
 			return
 		}
 
 		// disconnect all connections before connecting the target
 		if len(conns) > 0 {
+			var names []string
 			for _, profile := range profiles {
 				if _, ok := conns[profile.ID]; ok {
-					color.White("Disconnecting %s...", profile.Server)
+					names = append(names, profile.Server)
 				}
 			}
 			p.DisconnectAll()
-			waitDisconnected(p, 5*time.Second)
+			disconnectWithSpinner(p, strings.Join(names, ", "))
 		}
 
-		// connect target profile
-		color.Yellow("Connecting %s...", targetProfile.Server)
-		start := time.Now()
-		p.Connect(targetProfile.ID, password())
-
-		timeout := time.NewTimer(30 * time.Second)
-
-		// The daemon registers the connection asynchronously, so an empty
-		// status before any status has been observed means pending, not failed.
-		seen := false
-		last := ""
-
-	Loop:
-		for {
-			select {
-			case <-timeout.C:
-				color.Red("Connect %s timeout!", targetProfile.Server)
-				break Loop
-			default:
-				status := p.Connections()[targetProfile.ID].Status
-				elapsed := time.Since(start).Seconds()
-				if status != "" && status != "connected" && status != last {
-					color.White("  [%.1fs] %s", elapsed, status)
-				}
-				last = status
-				switch status {
-				case "connected":
-					color.Green("Connect %s completed! (%.1fs)", targetProfile.Server, elapsed)
-					break Loop
-				case "":
-					if seen {
-						color.Red("Connect %s failed!", targetProfile.Server)
-						break Loop
-					}
-				default:
-					seen = true
-				}
-				time.Sleep(200 * time.Millisecond)
-			}
-		}
+		connectWithSpinner(p, targetProfile)
 	},
 }
 
-// waitDisconnected polls the daemon until every connection is gone or has
-// status "disconnected", or until timeout passes.
-func waitDisconnected(p *pritunl.Pritunl, timeout time.Duration) {
-	deadline := time.Now().Add(timeout)
+// connectWithSpinner starts the connection and shows a progress line with the
+// daemon's current status until the connection is up, fails, or times out.
+func connectWithSpinner(p *pritunl.Pritunl, profile pritunl.Profile) {
+	sp := newSpinner()
+	p.Connect(profile.ID, password())
+
+	deadline := time.Now().Add(30 * time.Second)
+
+	// The daemon registers the connection asynchronously, so an empty
+	// status before any status has been observed means pending, not failed.
+	seen := false
+
+	for {
+		if time.Now().After(deadline) {
+			sp.fail(fmt.Sprintf("Connect %s timed out", profile.Server))
+			return
+		}
+
+		status := p.Connections()[profile.ID].Status
+		switch status {
+		case "connected":
+			sp.ok(fmt.Sprintf("Connected %s", profile.Server))
+			return
+		case "":
+			if seen {
+				sp.fail(fmt.Sprintf("Connect %s failed", profile.Server))
+				return
+			}
+		default:
+			seen = true
+		}
+
+		label := fmt.Sprintf("Connecting %s", profile.Server)
+		if status != "" {
+			label += color.HiBlackString(" · %s", status)
+		}
+		sp.tick(label)
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// disconnectWithSpinner shows a progress line until every connection is gone
+// or has status "disconnected", giving up after 5 seconds.
+func disconnectWithSpinner(p *pritunl.Pritunl, names string) {
+	sp := newSpinner()
+	deadline := time.Now().Add(5 * time.Second)
+
 	for time.Now().Before(deadline) {
 		active := false
 		for _, conn := range p.Connections() {
@@ -144,10 +149,13 @@ func waitDisconnected(p *pritunl.Pritunl, timeout time.Duration) {
 			}
 		}
 		if !active {
+			sp.ok("Disconnected " + names)
 			return
 		}
-		time.Sleep(200 * time.Millisecond)
+		sp.tick("Disconnecting " + names)
+		time.Sleep(100 * time.Millisecond)
 	}
+	sp.fail("Disconnect " + names + " timed out")
 }
 
 func init() {
