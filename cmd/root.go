@@ -98,7 +98,29 @@ var rootCmd = &cobra.Command{
 func connectWithSpinner(p *pritunl.Pritunl, profile pritunl.Profile) {
 	sp := newSpinner()
 	p.Connect(profile.ID, password())
+	result := waitForConnection(p, profile, sp)
 
+	// Pritunl rejects a TOTP code that was already used, so a second connect
+	// inside the same 30-second step fails until the next code is out.
+	if result == "failed" {
+		waitForNextOTP(sp, profile.Server)
+		p.Connect(profile.ID, password())
+		result = waitForConnection(p, profile, sp)
+	}
+
+	switch result {
+	case "connected":
+		sp.ok(fmt.Sprintf("Connected %s", profile.Server))
+	case "timed out":
+		sp.fail(fmt.Sprintf("Connect %s timed out", profile.Server))
+	default:
+		sp.fail(fmt.Sprintf("Connect %s failed", profile.Server))
+	}
+}
+
+// waitForConnection polls the daemon until the connection is up, fails, or
+// times out, and returns "connected", "failed" or "timed out".
+func waitForConnection(p *pritunl.Pritunl, profile pritunl.Profile, sp *spinner) string {
 	deadline := time.Now().Add(30 * time.Second)
 
 	// The daemon registers the connection asynchronously, so an empty
@@ -107,19 +129,16 @@ func connectWithSpinner(p *pritunl.Pritunl, profile pritunl.Profile) {
 
 	for {
 		if time.Now().After(deadline) {
-			sp.fail(fmt.Sprintf("Connect %s timed out", profile.Server))
-			return
+			return "timed out"
 		}
 
 		status := p.Connections()[profile.ID].Status
 		switch status {
 		case "connected":
-			sp.ok(fmt.Sprintf("Connected %s", profile.Server))
-			return
+			return "connected"
 		case "":
 			if seen {
-				sp.fail(fmt.Sprintf("Connect %s failed", profile.Server))
-				return
+				return "failed"
 			}
 		default:
 			seen = true
@@ -129,6 +148,17 @@ func connectWithSpinner(p *pritunl.Pritunl, profile pritunl.Profile) {
 		if status != "" {
 			label += color.HiBlackString(" · %s", status)
 		}
+		sp.tick(label)
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// waitForNextOTP blocks until the current 30-second TOTP step ends.
+func waitForNextOTP(sp *spinner, server string) {
+	step := int64(30)
+	next := time.Unix((time.Now().Unix()/step+1)*step, 0)
+	label := fmt.Sprintf("Connecting %s", server) + color.HiBlackString(" · waiting for next OTP code")
+	for time.Now().Before(next) {
 		sp.tick(label)
 		time.Sleep(100 * time.Millisecond)
 	}
